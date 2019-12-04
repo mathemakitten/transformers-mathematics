@@ -7,23 +7,21 @@ import tensorflow as tf
 import numpy as np
 
 from preprocessing import char2idx, questions_encoded, answers_encoded
+from constants import VOCAB_SIZE, QUESTION_MAX_LENGTH, ANSWER_MAX_LENGTH
 
 # Constants
 NUM_EPOCHS = 10
 BATCH_SIZE = 64
 SHUFFLE_BUFFER_SIZE = 100
 EMBEDDING_DIM = 32
-VOCAB_SIZE = len(char2idx)+1
-question_max_length = 160
-answer_max_length = 30
 
 num_encoder_tokens = VOCAB_SIZE
 num_decoder_tokens = VOCAB_SIZE
 latent_dim = EMBEDDING_DIM
 
 pad_value = len(char2idx)  # pad with unseen character
-questions_pad = [q + [pad_value] * (question_max_length - len(q)) for q in questions_encoded]
-answers_pad = [a + [pad_value] * (answer_max_length - len(a)) for a in answers_encoded]
+questions_pad = [q + [pad_value] * (QUESTION_MAX_LENGTH - len(q)) for q in questions_encoded]
+answers_pad = [a + [pad_value] * (ANSWER_MAX_LENGTH - len(a)) for a in answers_encoded]
 answers_shifted_pad = np.concatenate([np.expand_dims(np.ones(len(answers_pad))*53, axis=1), np.array(answers_pad)[:, :-1]], axis=1)  # right-shift targets
 questions_mask = np.where(np.array(questions_pad) == pad_value, 0, 1)
 answers_mask = np.where(np.array(answers_pad) == pad_value, 0, 1)
