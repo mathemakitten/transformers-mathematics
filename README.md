@@ -6,7 +6,8 @@ We will be using [this dataset](https://github.com/deepmind/mathematics_dataset)
 
 ### Benchmarks TODO
 All character-level.
-* [ ] LSTM
+* [ ] LSTM with teacher forcing
 * [ ] tiny Transformer 
     * [ ] add Encoder 
 * [ ] regular Transformer 
+* [ ] 1558M GPT-2 finetune, but there's some nuance here

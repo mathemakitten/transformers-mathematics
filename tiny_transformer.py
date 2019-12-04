@@ -6,7 +6,7 @@ import argparse
 import time
 from utils import get_logger
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 # Argparse setup
 parser = argparse.ArgumentParser(description='tiny transformer with linear attention',
@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser(description='tiny transformer with linear atten
 
 parser.add_argument('--run_name', metavar='PATH', type=str, default='run', help='Directory name for run.')
 parser.add_argument('--eager', metavar='eager_mode', type=bool, default=False, help='Eager mode on, else Autograph')
+parser.add_argument('--gpu', metavar='which_gpu', type=int, default=1, help='Which GPU to run on')
 
 args = parser.parse_args()
 
