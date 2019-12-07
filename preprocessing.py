@@ -8,8 +8,13 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-filepaths = '/media/biggie1/hn/transformers-mathematics/mathematics_dataset-v1.0/train-medium/tiny_data_1000.txt'
-# filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
+filepaths = '/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0/train-medium/tiny_data_1000.txt'
+#filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
+
+if not os.path.isdir('artifacts'):
+    os.mkdir('artifacts')
+if not os.path.isdir('cache'):
+    os.mkdir('cache')
 
 # Max input 160, Max output 30
 files = glob.glob(filepaths)
@@ -23,8 +28,6 @@ def get_universal_encoding(files):
     if not os.path.isfile(TOKENIZER_PATH):
 
         list_of_texts = []
-        #tokenizer = tf.keras.preprocessing.text.Tokenizer(filters='\n', char_level=True)
-
         for file in files:
             with open(file, 'r') as f:
                 list_of_texts.append(f.read())
@@ -32,19 +35,15 @@ def get_universal_encoding(files):
         all_text = ''.join(list_of_texts)
 
         print("Encoding vocabulary")
-        #tokenizer.fit_on_texts(set(all_text))
 
         # Get the unique characters in the file (vocab)
         chars_to_remove = {'\n'}
         vocab = list(set(all_text) - chars_to_remove)
 
         # Creating a mapping from unique characters to indices
-        char2idx = {u: i for i, u in enumerate(vocab)}
+        char2idx = {u: i+1 for i, u in enumerate(vocab)}  # +1 so we can pad with 0. use as np.array([char2idx[c] for c in all_text])
 
-        idx2char = np.array(vocab)
-
-        # Convert text to indices
-        #text_as_int = np.array([char2idx[c] for c in all_text])
+        idx2char = {v: k for k, v in char2idx.items()} #np.array(vocab)
 
         # Save token dictionary as a json file
         pickle.dump(char2idx, open(TOKENIZER_PATH, 'wb'))
@@ -61,7 +60,7 @@ char2idx, idx2char = get_universal_encoding(files)
 questions_encoded = []
 answers_encoded = []
 
-for file in files[0:1]:
+for file in files:
 
     with open(file, 'r') as f:
         lines = f.readlines()
@@ -75,3 +74,12 @@ for file in files[0:1]:
         questions_encoded.append([char2idx[q] for q in question])
         answers_encoded.append([char2idx[a] for a in answer])
 
+# pad here
+questions_pad = [q + [0] * (160 - len(q)) for q in questions_encoded]
+answers_pad = [a + [0] * (30 - len(a)) for a in answers_encoded]
+np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
+np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
+
+# np.save('cache/questions_encoded.npy', np.array(questions_encoded))
+# np.save('cache/answers_encoded.npy', np.array(answers_encoded))
+print("hello")
