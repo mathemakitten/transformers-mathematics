@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     # padded
     questions_pad = [q + [0] * (160 - len(q)) for q in questions_encoded]
-    answers_pad = [a + [0] * (30 - len(a)) for a in answers_encoded]
+    answers_pad = [[len(idx2char)+1] + a + [0] * (29 - len(a)) for a in answers_encoded]
     np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
     np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
 
