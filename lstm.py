@@ -1,69 +1,54 @@
 """ LSTM Encoder-Decoder architecture with the Keras imperative API.  """
+# https://github.com/yusugomori/deeplearning-tf2/blob/master/models/encoder_decoder_lstm.py
 
 import tensorflow as tf
 import numpy as np
 import os
-
+import argparse
+from constants import ANSWER_MAX_LENGTH
 from preprocessing import idx2char  # TODO cache questions/answers_encoded as .npy files
-from constants import VOCAB_SIZE, QUESTION_MAX_LENGTH, ANSWER_MAX_LENGTH
+from config import *
 
-tf.config.experimental_run_functions_eagerly(True)
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
+parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='The selected GPU to use, default 1')
+args = parser.parse_args()
 
-# Hparams — make this less shitty and not here
-BATCH_SIZE = 32
-LSTM_HIDDEN_SIZE = 128
-delimiter_token = VOCAB_SIZE - 1  # == newline_character; which is out-of-vocabulary. vocab starts at 0, so do not +1
-NUM_EPOCHS = 1
-TRAINING_STEPS = 10000
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+tf.config.experimental_run_functions_eagerly(args.eager)
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # TODO ADD SLACKBOT, get Ray's code
 
-# Much of this code was adapted from
-# https://github.com/yusugomori/deeplearning-tf2/blob/master/models/encoder_decoder_lstm.py
-
-# Load input data
+# load pre-padded data
 questions_encoded = np.array(np.load('cache/questions_encoded_padded.npy'))
 answers_encoded = np.array(np.load('cache/answers_encoded_padded.npy'))
-
-#  Input pipeline  # TODO pad in tf.data, not in numpy
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
+input_data = dataset.take(TRAINING_STEPS).shuffle(questions_encoded.shape[0]).repeat(NUM_EPOCHS).batch(BATCH_SIZE) \
+            .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
-# input_data = dataset.take(1000).shuffle(questions_encoded.shape[0]).repeat(NUM_EPOCHS).batch(32) #.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
-input_data = dataset.take(TRAINING_STEPS).shuffle(questions_encoded.shape[0])\
-    .repeat(NUM_EPOCHS)\
-    .batch(BATCH_SIZE)
-    #\
-     #.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-
-#input_data = input_data.batch(32)
-
-# # Load input data
+# #  load data
 # questions_encoded = np.array(np.load('cache/questions_encoded.npy', allow_pickle=True))
-# questions_encoded = tf.ragged.constant(questions_encoded)
 # answers_encoded = np.array(np.load('cache/answers_encoded.npy', allow_pickle=True))
-# answers_encoded = tf.ragged.constant(answers_encoded)
-#
-# #  Input pipeline
-# dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-#
-# input_data = dataset.take(50000).shuffle(questions_encoded.shape[0])\
-#     .padded_batch(batch_size=BATCH_SIZE,
-#                   padded_shapes=([None], [None]))\
-#     .repeat(NUM_EPOCHS).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+# questions_tensor = tf.ragged.constant(questions_encoded)
+# answers_tensor = tf.ragged.constant(answers_encoded)
+# dataset = tf.data.Dataset.from_tensor_slices((questions_tensor, answers_tensor))
+# input_data = dataset.take(TRAINING_STEPS).shuffle(questions_encoded.shape[0]).repeat(NUM_EPOCHS)\
+#              .padded_batch(BATCH_SIZE, padded_shapes=([None,], [None,]))\
+#              .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
 
 class Encoder(tf.keras.layers.Layer):
 
     def __init__(self, input_dim, hidden_dim):
         super(Encoder, self).__init__()
-        self.embedding = tf.keras.layers.Embedding(input_dim, hidden_dim, mask_zero=True)
+        self.embedding = tf.keras.layers.Embedding(input_dim, hidden_dim, mask_zero=False)  # can't mask with cuda
         self.lstm = tf.keras.layers.LSTM(hidden_dim, return_state=True)  # return hidden states & sequences
 
     def call(self, x):
+        input_mask = tf.dtypes.cast(tf.clip_by_value(tf.expand_dims(x, axis=-1), 0, 1), tf.float32)
         input = self.embedding(x)
+        input = input_mask * input
         output, hidden_state, cell_state = self.lstm(input)
         return [hidden_state, cell_state]
 
@@ -71,12 +56,14 @@ class Encoder(tf.keras.layers.Layer):
 class Decoder(tf.keras.layers.Layer):
     def __init__(self, hidden_dim, output_dim):
         super(Decoder, self).__init__()
-        self.embedding = tf.keras.layers.Embedding(output_dim, hidden_dim, mask_zero=True)
+        self.embedding = tf.keras.layers.Embedding(output_dim, hidden_dim, mask_zero=False)
         self.lstm = tf.keras.layers.LSTM(hidden_dim, return_state=True, return_sequences=True)   # apply data at each timestep?
         self.decoder_output = tf.keras.layers.Dense(output_dim)
 
     def call(self, x, encoder_states):
+        input_mask = tf.dtypes.cast(tf.clip_by_value(tf.expand_dims(x, axis=-1), 0, 1), tf.float32)
         x = self.embedding(x)
+        x = input_mask * x
         x, hidden_state, cell_state = self.lstm(inputs=x, initial_state=encoder_states)
         y = tf.nn.softmax(self.decoder_output(x))
 

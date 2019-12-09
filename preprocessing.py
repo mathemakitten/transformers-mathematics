@@ -8,7 +8,9 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-filepaths = '/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0/train-medium/tiny_data_1000.txt'
+question_dir = 'train-easy'
+question_filename = 'numbers__round_number.txt'
+filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename)
 #filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
 
 if not os.path.isdir('artifacts'):
@@ -57,29 +59,32 @@ def get_universal_encoding(files):
 
 char2idx, idx2char = get_universal_encoding(files)
 
-questions_encoded = []
-answers_encoded = []
+if __name__ == "__main__":
+    questions_encoded = []
+    answers_encoded = []
 
-for file in files:
+    for file in files:
 
-    with open(file, 'r') as f:
-        lines = f.readlines()
+        with open(file, 'r') as f:
+            lines = f.readlines()
 
-    num_pairs = len(lines) // 2
+        num_pairs = len(lines) // 2
 
-    for i in range(0, 2 * num_pairs, 2):
-        question = lines[i].strip()
-        answer = lines[i+1].strip()
+        for i in range(0, 2 * num_pairs, 2):
+            question = lines[i].strip()
+            answer = lines[i+1].strip()
 
-        questions_encoded.append([char2idx[q] for q in question])
-        answers_encoded.append([char2idx[a] for a in answer])
+            questions_encoded.append([char2idx[q] for q in question])
+            answers_encoded.append([char2idx[a] for a in answer])
 
-# pad here
-questions_pad = [q + [0] * (160 - len(q)) for q in questions_encoded]
-answers_pad = [a + [0] * (30 - len(a)) for a in answers_encoded]
-np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
-np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
+    # padded
+    questions_pad = [q + [0] * (160 - len(q)) for q in questions_encoded]
+    answers_pad = [a + [0] * (30 - len(a)) for a in answers_encoded]
+    np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
+    np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
 
-# np.save('cache/questions_encoded.npy', np.array(questions_encoded))
-# np.save('cache/answers_encoded.npy', np.array(answers_encoded))
-print("hello")
+    # # no padding
+    # np.save('cache/questions_encoded.npy', np.array(questions_encoded))
+    # np.save('cache/answers_encoded.npy', np.array(answers_encoded))
+
+    print('debug')
