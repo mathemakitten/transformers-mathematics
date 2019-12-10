@@ -49,17 +49,16 @@ class Encoder(tf.keras.layers.Layer):
         self.lstm = tf.keras.layers.LSTM(hidden_dim, return_state=True)  # return hidden states & sequences
 
     def call(self, x):
-        # input_mask = tf.dtypes.cast(tf.clip_by_value(tf.expand_dims(x, axis=-1), 0, 1), tf.float32)
+        input_mask = tf.dtypes.cast(tf.clip_by_value(x, 0, 1), dtype=tf.bool)
         input = self.embedding(x)
-        # input = input_mask * input
-        output, hidden_state, cell_state = self.lstm(input)
+        output, hidden_state, cell_state = self.lstm(input, mask=input_mask)
         return [hidden_state, cell_state]
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, output_dim):
+    def __init__(self, embedding_dim, hidden_dim, output_dim):
         super(Decoder, self).__init__()
-        self.embedding = tf.keras.layers.Embedding(output_dim, hidden_dim, mask_zero=False)
+        self.embedding = tf.keras.layers.Embedding(output_dim, embedding_dim, mask_zero=False)
         self.lstm = tf.keras.layers.LSTM(hidden_dim, return_state=True, return_sequences=True)   # apply data at each timestep?
         self.decoder_output = tf.keras.layers.Dense(output_dim)
 
@@ -77,7 +76,7 @@ class EncoderDecoder(tf.keras.Model):
     def __init__(self, input_dim, embedding_dim, hidden_dim, output_dim, max_len):
         super(EncoderDecoder, self).__init__()
         self.encoder = Encoder(input_dim, embedding_dim, hidden_dim)
-        self.decoder = Decoder(hidden_dim, output_dim)
+        self.decoder = Decoder(embedding_dim, hidden_dim, output_dim)
 
         self.max_length = max_len
         self.output_dim = output_dim
@@ -89,15 +88,14 @@ class EncoderDecoder(tf.keras.Model):
         batch_size = inputs.shape[0]
         len_target_sequences = self.max_length
 
-        encoder_hidden_state = self.encoder(inputs)
-        decoder_hidden_state = encoder_hidden_state
+        decoder_states = self.encoder(inputs)  # initialize decoder lstm states with encoder states
 
-        decoder_output_token = tf.ones((batch_size, 1)) * delimiter_token  # start token for inference
+        decoder_output_token = tf.ones((batch_size, 1))  # start token (1) for inference
         for timestep in range(len_target_sequences):
             if targets is not None:  # train
-                decoder_output, decoder_hidden_state = self.decoder(tf.expand_dims(targets[:, timestep], axis=1), decoder_hidden_state)
+                decoder_output, decoder_states = self.decoder(tf.expand_dims(targets[:, timestep], axis=1), decoder_states)
             else:  # inference
-                decoder_output, decoder_hidden_state = self.decoder(decoder_output_token, decoder_hidden_state)
+                decoder_output, decoder_states = self.decoder(decoder_output_token, decoder_states)
                 decoder_output_token = tf.argmax(decoder_output, axis=-1, output_type=tf.int32)
                 output_tokens.append(decoder_output_token)
             outputs = tf.concat([outputs, decoder_output], axis=1)
@@ -109,15 +107,17 @@ if __name__ == '__main__':
     tf.random.set_seed(1234)
 
     model = EncoderDecoder(input_dim=VOCAB_SIZE, embedding_dim=EMBEDDING_SIZE, hidden_dim=LSTM_HIDDEN_SIZE, output_dim=VOCAB_SIZE, max_len=ANSWER_MAX_LENGTH)
-    optimizer = tf.keras.optimizers.Adam(lr=0.0006)
+    optimizer = tf.keras.optimizers.Adam(lr=0.001)
     tf.keras.utils.Progbar
 
     @tf.function
     def train_step(inputs, targets, model):
         with tf.GradientTape() as tape:
-            outputs, _ = model(inputs, targets)  # softmax outputs
-            loss_mask = tf.dtypes.cast(tf.clip_by_value(targets, 0,1), tf.float32)
-            loss = tf.keras.losses.sparse_categorical_crossentropy(targets, outputs, from_logits=True)
+            # targets[:, :-1] to limit output to 30 chars from 31
+            outputs, _ = model(inputs[:, :], targets[:, :-1])  # softmax outputs
+            loss_mask = tf.dtypes.cast(tf.clip_by_value(targets[:, 1:], 0, 1), tf.float32)
+            # targets[:, 1:] to remove start token so model predicts target's actual chars
+            loss = tf.keras.losses.sparse_categorical_crossentropy(targets[:, 1:], outputs, from_logits=True)
             loss = loss * loss_mask
         grads = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -145,7 +145,7 @@ if __name__ == '__main__':
         batch_array = batch_tensor.numpy()
         text_outputs = []
         for sequence_pred in batch_array:
-            text = ''.join([idx2char[pred] if pred != 0 and pred != delimiter_token else '' for pred in sequence_pred])
+            text = ''.join([idx2char[pred] for pred in sequence_pred])
             text_outputs.append(text)
         return text_outputs
 
@@ -154,8 +154,8 @@ if __name__ == '__main__':
             inputs = data[0]
             targets = data[1]
             if i == 0:
-                outputs, output_tokens = inference_step(inputs, model)
-                inputs = token_to_text(inputs)
+                outputs, output_tokens = inference_step(inputs[:, :], model)
+                inputs = token_to_text(inputs[:, :])
                 targets = token_to_text(targets)
                 predictions = token_to_text(output_to_tensor(output_tokens))
                 for sample_index in range(len(inputs)):

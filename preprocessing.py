@@ -8,9 +8,10 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-question_dir = 'train-easy'
-question_filename = 'numbers__round_number.txt'
-filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename)
+# question_dir = 'train-easy'
+# question_filename = 'arithmetic__add_or_sub.txt'
+# filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename)
+filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', 'copy_task.txt')
 #filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
 
 if not os.path.isdir('artifacts'):
@@ -41,11 +42,11 @@ def get_universal_encoding(files):
         # Get the unique characters in the file (vocab)
         chars_to_remove = {'\n'}
         vocab = list(set(all_text) - chars_to_remove)
-
+        # pad, start, stop
+        vocab = ['_', '@', '~'] + vocab
         # Creating a mapping from unique characters to indices
-        char2idx = {u: i+1 for i, u in enumerate(vocab)}  # +1 so we can pad with 0. use as np.array([char2idx[c] for c in all_text])
-
-        idx2char = {v: k for k, v in char2idx.items()} #np.array(vocab)
+        char2idx = {u: i for i, u in enumerate(vocab)}
+        idx2char = {v: k for k, v in char2idx.items()}
 
         # Save token dictionary as a json file
         pickle.dump(char2idx, open(TOKENIZER_PATH, 'wb'))
@@ -79,7 +80,9 @@ if __name__ == "__main__":
 
     # padded
     questions_pad = [q + [0] * (160 - len(q)) for q in questions_encoded]
-    answers_pad = [[len(idx2char)+1] + a + [0] * (29 - len(a)) for a in answers_encoded]
+    # TODO: Clean this code
+    # 1: start, 2: stop, 0: pad
+    answers_pad = [[1] + a + [2] + [0] * (29 - len(a)) for a in answers_encoded]  # decoder input
     np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
     np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
 
