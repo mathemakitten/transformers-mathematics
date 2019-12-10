@@ -9,7 +9,6 @@ from constants import ANSWER_MAX_LENGTH
 from preprocessing import idx2char  # TODO cache questions/answers_encoded as .npy files
 from config import *
 
-print(delimiter_token)
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
 parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='The selected GPU to use, default 1')
@@ -24,11 +23,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "2"
 questions_encoded = np.array(np.load('cache/questions_encoded_padded.npy'))
 answers_encoded = np.array(np.load('cache/answers_encoded_padded.npy'))
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).repeat(NUM_EPOCHS).batch(BATCH_SIZE) \
+input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-NUM_TRAINING_EXAMPLES = int(NUM_EXAMPLES*(1-p_test))
-train_data = input_data.take(NUM_TRAINING_EXAMPLES)
-valid_data = input_data.skip(NUM_TRAINING_EXAMPLES)
+NUM_TRAINING_BATCHES = int(NUM_EXAMPLES/BATCH_SIZE*(1-p_test))
+train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(NUM_EPOCHS)
+valid_data = input_data.skip(NUM_TRAINING_BATCHES)
 
 # #  load data
 # questions_encoded = np.array(np.load('cache/questions_encoded.npy', allow_pickle=True))
@@ -96,8 +95,8 @@ class EncoderDecoder(tf.keras.Model):
                 decoder_output, decoder_states = self.decoder(tf.expand_dims(targets[:, timestep], axis=1), decoder_states)
             else:  # inference
                 decoder_output, decoder_states = self.decoder(decoder_output_token, decoder_states)
-                decoder_output_token = tf.argmax(decoder_output, axis=-1, output_type=tf.int32)
-                output_tokens.append(decoder_output_token)
+            decoder_output_token = tf.argmax(decoder_output, axis=-1, output_type=tf.int32)
+            output_tokens.append(decoder_output_token)
             outputs = tf.concat([outputs, decoder_output], axis=1)
 
         return outputs, output_tokens
@@ -110,6 +109,20 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam(lr=0.001)
     tf.keras.utils.Progbar
 
+    def get_accuracy(output_tokens, targets):
+        correct = 0
+        # targets = token_to_text(targets)
+        # predictions = token_to_text(output_to_tensor(output_tokens))
+        output_tokens = output_to_tensor(output_tokens)
+        for output, target in zip(output_tokens, targets[:, 1:]):
+            target = target.numpy().tolist()
+            output = output.numpy().tolist()
+            stop_index = target.index(2)
+            if output[:stop_index] == target[:stop_index]:  # index 2 is stop token
+                correct += 1
+
+        return correct/len(output_tokens)
+
     @tf.function
     def train_step(inputs, targets, model):
         with tf.GradientTape() as tape:
@@ -121,14 +134,15 @@ if __name__ == '__main__':
             loss = loss * loss_mask
         grads = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
-        return tf.reduce_sum(loss)/tf.reduce_sum(loss_mask)
+        loss = tf.reduce_sum(loss)/tf.reduce_sum(loss_mask)
+        return loss
 
     def inference_step(inputs, model):
         outputs, output_tokens = model(inputs)
         return outputs, output_tokens
 
     def train(input_data):
-        progress_bar = tf.keras.utils.Progbar(int(NUM_TRAINING_EXAMPLES / BATCH_SIZE * NUM_EPOCHS), verbose=1)
+        progress_bar = tf.keras.utils.Progbar(int(NUM_TRAINING_BATCHES * NUM_EPOCHS), verbose=1)
         for i, data in enumerate(input_data):
             inputs = data[0]
             targets = data[1]
@@ -153,8 +167,11 @@ if __name__ == '__main__':
         for i, data in enumerate(input_data):
             inputs = data[0]
             targets = data[1]
+
             if i == 0:
                 outputs, output_tokens = inference_step(inputs[:, :], model)
+                validation_loss = tf.keras.losses.sparse_categorical_crossentropy(targets[:, 1:], outputs, from_logits=True)
+                accuracy = get_accuracy(output_tokens, targets)
                 inputs = token_to_text(inputs[:, :])
                 targets = token_to_text(targets)
                 predictions = token_to_text(output_to_tensor(output_tokens))
@@ -162,6 +179,8 @@ if __name__ == '__main__':
                     print(f'Input: {inputs[sample_index]}')
                     print(f'Target: {targets[sample_index]}')
                     print(f'Prediction: {predictions[sample_index]} \n')
+                print(f'Validation Accuracy: {accuracy}')
+                print(f'Validation Loss: {tf.reduce_mean(validation_loss).numpy()}')
 
-    train(input_data)
-    inference(input_data)
+    train(train_data)
+    inference(train_data)
