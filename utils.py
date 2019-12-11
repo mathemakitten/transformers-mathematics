@@ -3,12 +3,12 @@ import logging
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 from datetime import datetime as dt
+from config import EXPERIMENT_DIR
 
 
-def get_logger(name, filename):
+def get_logger(name):
 
-    logger_path = 'logs/' + filename
-    #logger_path = 'logs'
+    logger_path = EXPERIMENT_DIR
     if not os.path.exists(logger_path):
         os.makedirs(logger_path)
 
@@ -20,7 +20,7 @@ def get_logger(name, filename):
     if not logger.handlers:
         # create a file handler
         current_time = dt.now().strftime('%Y%m%d')
-        file_handler = logging.FileHandler(os.path.join(logger_path, '{}.log'.format(current_time)))
+        file_handler = logging.FileHandler(os.path.join(logger_path, '{}_{}.log'.format(current_time, name)))
         file_handler.setLevel(logging.INFO)
         # create a logging format
         formats = '[%(asctime)s - %(name)s-%(lineno)d - %(funcName)s - %(levelname)s] %(message)s'

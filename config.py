@@ -1,9 +1,8 @@
 from constants import VOCAB_SIZE
-
-BATCH_SIZE = 12
+BATCH_SIZE = 10
 EMBEDDING_SIZE = 512
 LSTM_HIDDEN_SIZE = 2048
-NUM_EPOCHS = 50
-NUM_EXAMPLES = 666666
+NUM_EPOCHS = 100
+NUM_EXAMPLES = 20
 p_test = .1
-tb_logdir = 'easy-arithmetic__add_or_sub-fullrun'
+EXPERIMENT_DIR = 'experiment_results/easy-arithmetic__add_or_sub-fullrun'
