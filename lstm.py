@@ -167,7 +167,7 @@ if __name__ == '__main__':
             # Run a single training batch
             start_time = time.time()
             loss, updates = train_step(inputs, targets, model)
-            time_per_batch = time.time() - start_time
+            time_per_batch = round(time.time() - start_time, 2)
 
             if i == 0:
                 tensorboard_profile(writer, tb_logdir)
