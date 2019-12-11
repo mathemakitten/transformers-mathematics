@@ -8,6 +8,7 @@ import argparse
 from constants import ANSWER_MAX_LENGTH
 from preprocessing import idx2char  # TODO cache questions/answers_encoded as .npy files
 from config import *
+import time
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
@@ -123,6 +124,11 @@ if __name__ == '__main__':
 
         return correct/len(output_tokens)
 
+    # TODO HN: fix CUPTI on Quoc so we can see the graph visualization
+    def tensorboard_profile(writer, logdir):
+        with writer.as_default():
+            tf.summary.trace_export(name="Trace_loss", step=0, profiler_outdir=logdir)
+
     @tf.function
     def train_step(inputs, targets, model):
         with tf.GradientTape() as tape:
@@ -134,22 +140,58 @@ if __name__ == '__main__':
             loss = loss * loss_mask
         grads = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+        # Get gradient updates
+        updates = [tf.reduce_mean(tf.abs(g)) / tf.reduce_mean(tf.abs(v)) if g is not None else None for g, v in
+                   zip(grads, model.trainable_variables)]
+        updates = {v.name: u for v, u in zip(model.trainable_variables, updates) if u is not None}
+
         loss = tf.reduce_sum(loss)/tf.reduce_sum(loss_mask)
-        return loss
+        return loss, updates
 
-    def inference_step(inputs, model):
-        outputs, output_tokens = model(inputs)
-        return outputs, output_tokens
 
-    def train(input_data):
+    def train(input_data, model):
+
+        # Setup training tracking capabilities
         progress_bar = tf.keras.utils.Progbar(int(NUM_TRAINING_BATCHES * NUM_EPOCHS), verbose=1)
+        writer = tf.summary.create_file_writer(tb_logdir)
+
         for i, data in enumerate(input_data):
             inputs = data[0]
             targets = data[1]
             progress_bar.update(i)
-            loss = train_step(inputs, targets, model)
+
+            if i == 0:
+                tf.summary.trace_on(graph=True, profiler=True)
+
+            # Run a single training batch
+            start_time = time.time()
+            loss, updates = train_step(inputs, targets, model)
+            time_per_batch = time.time() - start_time
+
+            if i == 0:
+                tensorboard_profile(writer, tb_logdir)
+                tf.summary.trace_off()
+
             if i % 10 == 0:
-                print(f' Train loss at batch {i}: {loss}')
+                print(f' Train loss at batch {i}: {loss} - Time per batch: {time_per_batch}')
+                with writer.as_default():
+                    tf.summary.scalar(f"Losses/total_loss", loss, step=i)
+
+                    for variable in model.trainable_variables:
+                        tf.summary.histogram("Weights/{}".format(variable.name), variable, step=i)
+
+                    for layer, update in updates.items():
+                        tf.summary.scalar("Updates/{}".format(layer), update, step=i)
+
+                    mean_updates = tf.reduce_mean(list(updates.values()))
+                    max_updates = tf.reduce_max(list(updates.values()))
+                    tf.summary.scalar("Mean_Max_Updates/Mean_updates", mean_updates, step=i)
+                    tf.summary.scalar("Mean_Max_Updates/Max_updates", max_updates, step=i)
+
+                    writer.flush()
+
+    # Inference
 
     def output_to_tensor(tokens):
         tensor_tokens = tf.squeeze(tf.convert_to_tensor(tokens), axis=2)
@@ -162,6 +204,10 @@ if __name__ == '__main__':
             text = ''.join([idx2char[pred] for pred in sequence_pred])
             text_outputs.append(text)
         return text_outputs
+
+    def inference_step(inputs, model):
+        outputs, output_tokens = model(inputs)
+        return outputs, output_tokens
 
     def inference(input_data):
         for i, data in enumerate(input_data):
@@ -182,5 +228,5 @@ if __name__ == '__main__':
                 print(f'Validation Accuracy: {accuracy}')
                 print(f'Validation Loss: {tf.reduce_mean(validation_loss).numpy()}')
 
-    train(train_data)
+    train(train_data, model)
     inference(train_data)
