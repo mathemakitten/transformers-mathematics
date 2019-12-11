@@ -19,7 +19,7 @@ parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='T
 args = parser.parse_args()
 
 tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "3"
 
 # TODO ADD SLACKBOT, get Ray's code
 
@@ -152,18 +152,23 @@ if __name__ == '__main__':
         loss = tf.reduce_sum(loss)/tf.reduce_sum(loss_mask)
         return loss, updates
 
-    def get_validation_metrics(input_data, model):
+    def get_validation_metrics(validation_data, model):
         loss_list = []
         accuracy_list = []
-        for i, data in enumerate(input_data):
+        for i, data in enumerate(validation_data):
             inputs = data[0]
             targets = data[1]
+
             outputs, output_tokens = inference_step(inputs[:, :], model)
+            loss_mask = tf.dtypes.cast(tf.clip_by_value(targets[:, 1:], 0, 1), tf.float32)
             validation_loss = tf.keras.losses.sparse_categorical_crossentropy(targets[:, 1:], outputs, from_logits=True)
+            validation_loss = validation_loss * loss_mask
             accuracy = get_accuracy(output_tokens, targets)
+
             inputs = token_to_text(inputs[:, :])
             targets = token_to_text(targets)
             predictions = token_to_text(output_to_tensor(output_tokens))
+
             if i == 0:  # Print some examples from one batch
                 for sample_index in range(3):
                     logger.info(f'Input: {inputs[sample_index]}')
@@ -171,22 +176,23 @@ if __name__ == '__main__':
                     logger.info(f'Prediction: {predictions[sample_index]} \n')
 
             accuracy_list.append(accuracy)
-            loss_list.append(tf.reduce_mean(validation_loss).numpy())
-            mean_loss = np.mean(loss_list)
-            mean_acc = np.mean(accuracy_list)
-            logger.info(f'Validation loss: {mean_loss}')
-            logger.info(f'Validation accuracy: {mean_acc}')
+            loss_list.append(tf.reduce_sum(validation_loss)/tf.reduce_sum(loss_mask).numpy())
+
+        mean_loss = np.mean(loss_list)
+        mean_acc = np.mean(accuracy_list)
+        logger.info(f'Validation loss: {mean_loss}')
+        logger.info(f'Validation accuracy: {mean_acc}')
         return mean_loss, mean_acc
 
-    def train(input_data, model):
-
-        best_loss = np.inf  # for model checkpointing
+    def train(training_data, model):
+        valid_loss_list = []  # for early stopping
+        best_loss = np.inf  # for model check-pointing
 
         # Setup training tracking capabilities
         progress_bar = tf.keras.utils.Progbar(int(NUM_TRAINING_BATCHES * NUM_EPOCHS), verbose=1)
         writer = tf.summary.create_file_writer(tb_logdir)
 
-        for i, data in enumerate(input_data):
+        for i, data in enumerate(training_data):
             inputs = data[0]
             targets = data[1]
             progress_bar.update(i)
@@ -223,11 +229,16 @@ if __name__ == '__main__':
 
             if i % 20 == 0:
                 valid_loss, valid_acc = get_validation_metrics(valid_data, model)
+                valid_loss_list.append(valid_loss)
                 if valid_loss < best_loss:
                     best_loss = valid_loss
                     logger.info(f'Saving on batch {i}')
                     logger.info(f'New best validation loss: {best_loss}')
                     model.save_weights(os.path.join(EXPERIMENT_DIR, 'model_weights'), save_format='tf')
+                # early stopping
+                print(valid_loss_list)
+                if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
+                    return
 
     def output_to_tensor(tokens):
         tensor_tokens = tf.squeeze(tf.convert_to_tensor(tokens), axis=2)
@@ -245,14 +256,16 @@ if __name__ == '__main__':
         outputs, output_tokens = model(inputs)
         return outputs, output_tokens
 
-    def inference(input_data):
-        for i, data in enumerate(input_data):
+    def inference(inference_data):
+        for i, data in enumerate(inference_data):
             inputs = data[0]
             targets = data[1]
 
             if i == 0:
                 outputs, output_tokens = inference_step(inputs[:, :], model)
+                loss_mask = tf.dtypes.cast(tf.clip_by_value(targets[:, 1:], 0, 1), tf.float32)
                 validation_loss = tf.keras.losses.sparse_categorical_crossentropy(targets[:, 1:], outputs, from_logits=True)
+                validation_loss = validation_loss * loss_mask
                 accuracy = get_accuracy(output_tokens, targets)
                 inputs = token_to_text(inputs[:, :])
                 targets = token_to_text(targets)
@@ -262,8 +275,7 @@ if __name__ == '__main__':
                     print(f'Target: {targets[sample_index]}')
                     print(f'Prediction: {predictions[sample_index]} \n')
                 print(f'Validation Accuracy: {accuracy}')
-                print(f'Validation Loss: {tf.reduce_mean(validation_loss).numpy()}')
-
+                print(f'Validation Loss: {tf.reduce_sum(validation_loss)/tf.reduce_sum(loss_mask).numpy()}')
 
     train(train_data, model)
     inference(valid_data)
