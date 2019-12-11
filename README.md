@@ -4,7 +4,8 @@ GPT-2 sucks at third grade math, I wonder if we can do better
 
 We will be using [this dataset](https://github.com/deepmind/mathematics_dataset).
  
-Joint work by [Helen Ngo](https://github.com/mathemakitten), [Joseph Palermo](https://github.com/joepalermo) and [Michael Jia](https://github.com/michaelzcjia).
+Joint work by [Helen Ngo](https://github.com/mathemakitten), [Joseph Palermo](https://github.com/joepalermo) and [Michael Jia](https://github.com/michaelzcjia), 
+with support from [Rayhane Mama](https://github.com/Rayhane-mamah).
 
 ### Benchmarks TODO
 All character-level.
