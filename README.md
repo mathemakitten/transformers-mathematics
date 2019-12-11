@@ -13,3 +13,10 @@ All character-level.
     * [ ] add Encoder 
 * [ ] regular Transformer 
 * [ ] 1558M GPT-2 finetune, but there's some nuance here
+
+### Other resources for mathematical reasoning
+This is mostly a to-read list.
+
+* [SemEval 2019: Math Question Answering](https://github.com/allenai/semeval-2019-task-10)
+* [CodaLab Competition on Math QA](https://competitions.codalab.org/competitions/20013)
+* [this paper on symbolic integration and solving diffEQ](https://arxiv.org/abs/1912.01412)
