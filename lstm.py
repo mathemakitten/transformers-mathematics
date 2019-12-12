@@ -19,7 +19,7 @@ parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='T
 args = parser.parse_args()
 
 tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 # TODO ADD SLACKBOT, get Ray's code
 
@@ -105,13 +105,15 @@ class EncoderDecoder(tf.keras.Model):
 
         return outputs, output_tokens
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # TODO HN move these function definitions out of main... hahahahaha yikes
     np.random.seed(1234)
     tf.random.set_seed(1234)
 
     model = EncoderDecoder(input_dim=VOCAB_SIZE, embedding_dim=EMBEDDING_SIZE, hidden_dim=LSTM_HIDDEN_SIZE, output_dim=VOCAB_SIZE, max_len=ANSWER_MAX_LENGTH)
     optimizer = tf.keras.optimizers.Adam(lr=0.001)
     tf.keras.utils.Progbar
+
+    logger.info("Logging to {}".format(EXPERIMENT_DIR))
 
     def get_accuracy(output_tokens, targets):
         correct = 0
@@ -169,7 +171,7 @@ if __name__ == '__main__':
             targets = token_to_text(targets)
             predictions = token_to_text(output_to_tensor(output_tokens))
 
-            if i == 0:  # Print some examples from one batch
+            if i % 100 == 0:  # Print some examples from one batch # TODO should this be % 100?
                 for sample_index in range(3):
                     logger.info(f'Input: {inputs[sample_index]}')
                     logger.info(f'Target: {targets[sample_index]}')
@@ -261,7 +263,7 @@ if __name__ == '__main__':
             inputs = data[0]
             targets = data[1]
 
-            if i == 0:
+            if i % 1000 == 0:  # TODO should this be % 100?
                 outputs, output_tokens = inference_step(inputs[:, :], model)
                 loss_mask = tf.dtypes.cast(tf.clip_by_value(targets[:, 1:], 0, 1), tf.float32)
                 validation_loss = tf.keras.losses.sparse_categorical_crossentropy(targets[:, 1:], outputs, from_logits=True)

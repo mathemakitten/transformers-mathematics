@@ -1,15 +1,15 @@
 import os
 from constants import VOCAB_SIZE
 from datetime import datetime as dt
-current_time = dt.now().strftime('%Y_%m_%d_%H:%M-')
+current_time = dt.now().strftime('%Y%m%d_%H_%M-')
 
 BATCH_SIZE = 256
 EMBEDDING_SIZE = 512
-LSTM_HIDDEN_SIZE = 2048
-NUM_EPOCHS = 30
+LSTM_HIDDEN_SIZE = 512
+NUM_EPOCHS = 50
 NUM_EXAMPLES = 666666
 p_test = .2
-EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'easy-arithmetic__add_or_sub-fullrun')
+EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'easy-arithmetic__add_or_sub-fullrun_batch256_lstm512_epochs50')
 print(EXPERIMENT_DIR)
 
 
