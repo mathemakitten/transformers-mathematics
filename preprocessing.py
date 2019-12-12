@@ -8,9 +8,9 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-question_dir = 'train-easy'
-question_filename = 'arithmetic__add_or_sub.txt'
-filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename)
+question_dir = 'interpolate'
+question_filename = 'arithmetic__add_or_sub'
+filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename + '.txt')
 # filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', 'copy_task.txt')
 #filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
 
@@ -83,8 +83,8 @@ if __name__ == "__main__":
     # TODO: Clean this code
     # 1: start, 2: stop, 0: pad
     answers_pad = [[1] + a + [2] + [0] * (29 - len(a)) for a in answers_encoded]  # decoder input
-    np.save('cache/questions_encoded_padded.npy', np.array(questions_pad))
-    np.save('cache/answers_encoded_padded.npy', np.array(answers_pad))
+    np.save(f'cache/questions_encoded_padded_{question_dir}_{question_filename}.npy', np.array(questions_pad))
+    np.save(f'cache/answers_encoded_padded_{question_dir}_{question_filename}.npy', np.array(answers_pad))
 
     # # no padding
     # np.save('cache/questions_encoded.npy', np.array(questions_encoded))
