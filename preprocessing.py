@@ -8,11 +8,13 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-question_dir = 'interpolate'
-question_filename = 'arithmetic__add_or_sub'
-filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename + '.txt')
+question_dir = ''
+question_filename = 'all_data_ever'
+#filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', question_dir, question_filename + '.txt')
 # filepaths = os.path.join('/media/biggie1/transformers-mathematics/mathematics_dataset-v1.0', 'copy_task.txt')
 #filepaths = 'mathematics_dataset-v1.0/train-medium/*.txt'
+filepaths = 'mathematics_dataset-v1.0/train*/arithmetic__add_or_sub.txt'
+# filepaths = 'mathematics_dataset-v1.0/train*/*.txt' # FOR ALL THE DATA
 
 if not os.path.isdir('artifacts'):
     os.mkdir('artifacts')

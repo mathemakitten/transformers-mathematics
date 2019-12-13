@@ -19,7 +19,7 @@ parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='T
 args = parser.parse_args()
 
 tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 # TODO ADD SLACKBOT, get Ray's code
 # TODO: Take functions out of main
@@ -27,8 +27,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # load pre-padded data
 # questions_encoded = np.array(np.load('cache/questions_encoded_padded.npy'))
 # answers_encoded = np.array(np.load('cache/answers_encoded_padded.npy'))
-questions_encoded = np.array(np.load('cache/questions_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
-answers_encoded = np.array(np.load('cache/answers_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
+#questions_encoded = np.array(np.load('cache/questions_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
+#answers_encoded = np.array(np.load('cache/answers_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
+questions_encoded = np.array(np.load('cache/questions_encoded_padded_interpolate_arithmetic__add_or_sub_ALL_DIFFICULTY.npy'))
+answers_encoded = np.array(np.load('cache/answers_encoded_padded_interpolate_arithmetic__add_or_sub_ALL_DIFFICULTY.npy'))
+
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
 input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
@@ -286,7 +289,6 @@ if __name__ == '__main__':  # TODO HN move these function definitions out of mai
 
     logger.info("Logging to {}".format(EXPERIMENT_DIR))
 
-    # train(train_data)
-    model.load_weights(
-        'experiment_results/2019_12_12_00:38-easy-arithmetic__add_or_sub-fullrun_batch512_lstm1024_15epochs/model_weights')
+    train(train_data, model)
+    #model.load_weights('experiment_results/2019_12_12_00:38-easy-arithmetic__add_or_sub-fullrun_batch512_lstm1024_15epochs/model_weights')
     inference(valid_data, model)
