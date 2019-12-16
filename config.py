@@ -9,7 +9,7 @@ LSTM_HIDDEN_SIZE = 512
 NUM_EPOCHS = 10
 NUM_EXAMPLES = 666666*3
 p_test = .2
-EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'helen_all_add_subtract')
+EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'transformer_testing')
 print(EXPERIMENT_DIR)
 
 

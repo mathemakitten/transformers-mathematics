@@ -536,6 +536,7 @@ if __name__ == '__main__':
 
         # inp -> portuguese, tar -> english
         # for (batch, (inp, tar)) in enumerate(train_dataset):
+        accuracy_list = []
         for batch, data in enumerate(train_data):
             inp = data[0]
             tar = data[1]
@@ -550,12 +551,13 @@ if __name__ == '__main__':
             targets_to_compare = tar[:, 1:] * padding_mask
 
             # TODO COMPARE ROWS of preds vs. targets -- with tf.where?
-            if preds == targets:
-                pass
+            correct_pred_mask = tf.reduce_all(tf.equal(preds_to_compare, targets_to_compare), axis=1)
+            accuracy = tf.reduce_sum(tf.cast(correct_pred_mask, dtype=tf.int32))/tf.shape(correct_pred_mask)[0]
+            accuracy_list.append(accuracy)
 
             if batch % 50 == 0:
                 print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
-                    epoch + 1, batch, train_loss.result(), train_accuracy.result()))
+                    epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
 
         if (epoch + 1) % 5 == 0:
             ckpt_save_path = ckpt_manager.save()
