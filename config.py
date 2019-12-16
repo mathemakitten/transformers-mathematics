@@ -3,13 +3,13 @@ from constants import VOCAB_SIZE
 from datetime import datetime as dt
 current_time = dt.now().strftime('%Y%m%d_%H_%M-')
 
-BATCH_SIZE = 1
+BATCH_SIZE = 256
 EMBEDDING_SIZE = 512
-LSTM_HIDDEN_SIZE = 1024
-NUM_EPOCHS = 50
+LSTM_HIDDEN_SIZE = 512
+NUM_EPOCHS = 10
 NUM_EXAMPLES = 666666*3
 p_test = .2
-EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'arithmetic__add_or_sub_ALL_DIFFICULTY_batch256_lstm512_epochs50')
+EXPERIMENT_DIR = os.path.join('experiment_results', current_time + 'helen_all_add_subtract')
 print(EXPERIMENT_DIR)
 
 

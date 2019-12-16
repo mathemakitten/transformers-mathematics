@@ -29,8 +29,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 # answers_encoded = np.array(np.load('cache/answers_encoded_padded.npy'))
 #questions_encoded = np.array(np.load('cache/questions_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
 #answers_encoded = np.array(np.load('cache/answers_encoded_padded_interpolate_arithmetic__add_or_sub.npy'))
-questions_encoded = np.array(np.load('cache/questions_encoded_padded_interpolate_arithmetic__add_or_sub_ALL_DIFFICULTY.npy'))
-answers_encoded = np.array(np.load('cache/answers_encoded_padded_interpolate_arithmetic__add_or_sub_ALL_DIFFICULTY.npy'))
+questions_encoded = np.array(np.load('cache/questions_encoded_padded__all_data_ever.npy'))
+answers_encoded = np.array(np.load('cache/answers_encoded_padded__all_data_ever.npy'))
 
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
 input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \

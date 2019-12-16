@@ -24,23 +24,26 @@ dataset_id = '_all_data_ever'
 questions_encoded = np.array(np.load('cache/questions_encoded_padded_{}.npy'.format(dataset_id)))
 answers_encoded = np.array(np.load('cache/answers_encoded_padded_{}.npy'.format(dataset_id)))
 
+
+params = TransformerParams()
+# TODO add these to the params class
+num_layers = 2
+d_model = 512
+dff = 512
+num_heads = 4
+input_vocab_size = VOCAB_SIZE #tokenizer_pt.vocab_size + 2
+target_vocab_size = VOCAB_SIZE #tokenizer_en.vocab_size + 2
+dropout_rate = 0.1
+EPOCHS = 1
+#NUM_EXAMPLES = 10
+
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
 input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 NUM_TRAINING_BATCHES = int(NUM_EXAMPLES/BATCH_SIZE*(1-p_test))
-train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(NUM_EPOCHS)
+train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(EPOCHS)
 valid_data = input_data.skip(NUM_TRAINING_BATCHES)
 
-params = TransformerParams()
-# TODO add these to the params class
-num_layers = 4
-d_model = 128
-dff = 512
-num_heads = 8
-input_vocab_size = VOCAB_SIZE #tokenizer_pt.vocab_size + 2
-target_vocab_size = VOCAB_SIZE #tokenizer_en.vocab_size + 2
-dropout_rate = 0.1
-EPOCHS = 20
 
 def get_angles(pos, i, d_model):
     angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
@@ -391,7 +394,8 @@ def train_step(inp, tar):
     optimizer.apply_gradients(zip(gradients, transformer.trainable_variables))
 
     train_loss(loss)
-    train_accuracy(tar_real, predictions)
+    #train_accuracy(tar_real, predictions)
+    return predictions
 
 
 def evaluate(inp_sentence):
@@ -410,7 +414,6 @@ def evaluate(inp_sentence):
     for i in range(MAX_LENGTH):
         enc_padding_mask, combined_mask, dec_padding_mask = create_masks(
             encoder_input, output)
-
         # predictions.shape == (batch_size, seq_len, vocab_size)
         predictions, attention_weights = transformer(encoder_input,
                                                      output,
@@ -498,7 +501,9 @@ if __name__ == '__main__':
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
     train_loss = tf.keras.metrics.Mean(name='train_loss')
-    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+
+    # This is character-level accuracy, which is great but not what we want
+    #train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
 
     transformer = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
                               pe_input=QUESTION_MAX_LENGTH,#input_vocab_size,
@@ -527,14 +532,26 @@ if __name__ == '__main__':
         start = time.time()
 
         train_loss.reset_states()
-        train_accuracy.reset_states()
+        #train_accuracy.reset_states()
 
         # inp -> portuguese, tar -> english
         # for (batch, (inp, tar)) in enumerate(train_dataset):
         for batch, data in enumerate(train_data):
             inp = data[0]
             tar = data[1]
-            train_step(inp, tar)
+            predictions = train_step(inp, tar)
+
+            # TODO here calculate accuracy per batch
+            first_padding_positions = tf.argmax(tf.cast(tf.equal(tf.cast(tf.zeros(tar.shape), dtype=tf.float32), tf.cast(tar, dtype=tf.float32)), tf.float32), axis=1)
+            preds = tf.argmax(predictions, axis=-1)
+
+            padding_mask = tf.sequence_mask(lengths=first_padding_positions, maxlen=ANSWER_MAX_LENGTH, dtype=tf.int64)
+            preds_to_compare = preds * padding_mask
+            targets_to_compare = tar[:, 1:] * padding_mask
+
+            # TODO COMPARE ROWS of preds vs. targets -- with tf.where?
+            if preds == targets:
+                pass
 
             if batch % 50 == 0:
                 print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
