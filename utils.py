@@ -3,12 +3,11 @@ import logging
 import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 from datetime import datetime as dt
-from config import EXPERIMENT_DIR
 
 
-def get_logger(name):
+def get_logger(name, experiment_dir):
 
-    logger_path = EXPERIMENT_DIR
+    logger_path = experiment_dir
     if not os.path.exists(logger_path):
         os.makedirs(logger_path)
 

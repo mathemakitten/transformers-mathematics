@@ -8,29 +8,29 @@ from config import *
 from utils import get_logger
 import time
 from constants import QUESTION_MAX_LENGTH
-from lstm import inference_step, inference, get_validation_metrics, get_accuracy
+# from lstm import inference_step, inference, get_validation_metrics, get_accuracy
 
-logger = get_logger('validation_log')
-parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
-parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='The selected GPU to use, default 1')
-args = parser.parse_args()
-
-tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "3"
-
-# load pre-padded data
-dataset_id = '_all_data_ever'
-questions_encoded = np.array(np.load('cache/questions_encoded_padded_{}.npy'.format(dataset_id)))
-answers_encoded = np.array(np.load('cache/answers_encoded_padded_{}.npy'.format(dataset_id)))
-
-params = TransformerParams()
-
-dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-input_data = dataset.take(params.num_examples).shuffle(questions_encoded.shape[0]).batch(params.batch_size) \
-            .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-train_data = input_data.take(params.num_training_batches).repeat(params.num_epochs)
-valid_data = input_data.skip(params.num_training_batches)
+# logger = get_logger('validation_log')
+# parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+# parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
+# parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='The selected GPU to use, default 1')
+# args = parser.parse_args()
+#
+# tf.config.experimental_run_functions_eagerly(args.eager)
+# os.environ['CUDA_VISIBLE_DEVICES'] = "3"
+#
+# # load pre-padded data
+# dataset_id = '_all_data_ever'
+# questions_encoded = np.array(np.load('cache/questions_encoded_padded_{}.npy'.format(dataset_id)))
+# answers_encoded = np.array(np.load('cache/answers_encoded_padded_{}.npy'.format(dataset_id)))
+#
+# params = TransformerParams()
+#
+# dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
+# input_data = dataset.take(params.num_examples).shuffle(questions_encoded.shape[0]).batch(params.batch_size) \
+#             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+# train_data = input_data.take(params.num_training_batches).repeat(params.num_epochs)
+# valid_data = input_data.skip(params.num_training_batches)
 
 
 def get_angles(pos, i, d_model):
@@ -161,8 +161,6 @@ def point_wise_feed_forward_network(d_model, dff):
   ])
 
 
-
-
 class EncoderLayer(tf.keras.layers.Layer):
     def __init__(self, d_model, num_heads, dff, rate=0.1):
         super(EncoderLayer, self).__init__()
@@ -186,8 +184,6 @@ class EncoderLayer(tf.keras.layers.Layer):
         out2 = self.layernorm2(out1 + ffn_output)  # (batch_size, input_seq_len, d_model)
 
         return out2
-
-
 
 
 class DecoderLayer(tf.keras.layers.Layer):
@@ -226,8 +222,6 @@ class DecoderLayer(tf.keras.layers.Layer):
         return out3, attn_weights_block1, attn_weights_block2
 
 
-
-
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, num_layers, d_model, num_heads, dff, input_vocab_size, maximum_position_encoding, rate=0.1):
         super(Encoder, self).__init__()
@@ -256,9 +250,6 @@ class Encoder(tf.keras.layers.Layer):
             x = self.enc_layers[i](x, training, mask)
 
         return x  # (batch_size, input_seq_len, d_model)
-
-
-
 
 
 class Decoder(tf.keras.layers.Layer):
@@ -299,11 +290,24 @@ class Decoder(tf.keras.layers.Layer):
 
 
 class Transformer(tf.keras.Model):
-    def __init__(self, num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size, pe_input, pe_target, rate=0.1):
+    def __init__(self, params):
         super(Transformer, self).__init__()
 
-        self.encoder = Encoder(num_layers, d_model, num_heads, dff, input_vocab_size, pe_input, rate)
-        self.decoder = Decoder(num_layers, d_model, num_heads, dff, target_vocab_size, pe_target, rate)
+        self.learning_rate = CustomSchedule(params.d_model)
+        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+        self.train_loss = tf.keras.metrics.Mean(name='train_loss')
+        num_layers = params.num_layers
+        d_model = params.d_model
+        num_heads = params.num_heads
+        dff = params.dff
+        input_vocab_size = params.vocab_size
+        target_vocab_size = params.vocab_size
+        pe_input = params.questions_max_length
+        pe_target = params.answer_max_length
+        attention_dropout = params.attention_dropout
+
+        self.encoder = Encoder(num_layers, d_model, num_heads, dff, input_vocab_size, pe_input, attention_dropout)
+        self.decoder = Decoder(num_layers, d_model, num_heads, dff, target_vocab_size, pe_target, attention_dropout)
         self.final_layer = tf.keras.layers.Dense(target_vocab_size)
 
     def call(self, inp, tar, training, enc_padding_mask, look_ahead_mask, dec_padding_mask):
@@ -314,6 +318,102 @@ class Transformer(tf.keras.Model):
         final_output = self.final_layer(dec_output)  # (batch_size, tar_seq_len, target_vocab_size)
 
         return final_output, attention_weights
+
+    def loss_function(self, real, pred):
+        mask = tf.math.logical_not(tf.math.equal(real, 0))
+        loss_ = self.loss_object(real, pred)
+
+        mask = tf.cast(mask, dtype=loss_.dtype)
+        loss_ *= mask
+
+        return tf.reduce_mean(loss_)
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+                                  tf.TensorSpec(shape=(None, None), dtype=tf.int64), ])
+    def train_step(self, inputs, targets):
+        targets_with_start_token = targets[:, :-1]
+        targets_no_start_token = targets[:, 1:]
+
+        enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inputs, targets_with_start_token)
+
+        with tf.GradientTape() as tape:
+            predictions, _ = self.call(inputs, targets_with_start_token,
+                                   True,
+                                   enc_padding_mask,
+                                   combined_mask,
+                                   dec_padding_mask)
+            loss = self.loss_function(targets_no_start_token, predictions)
+
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        self.train_loss(loss)
+        # train_accuracy(tar_real, predictions)
+        return predictions
+
+    def train(self, params, train_data, valid_data, logger):
+        self.loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
+        train_loss = tf.keras.metrics.Mean(name='train_loss')
+
+        checkpoint_path = params.checkpoint_dir
+        ckpt = tf.train.Checkpoint(transformer=self, optimizer=self.optimizer)
+        ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
+        # if a checkpoint exists, restore the latest checkpoint.
+        if ckpt_manager.latest_checkpoint:
+            ckpt.restore(ckpt_manager.latest_checkpoint)
+            print('Latest checkpoint restored!!')
+
+        valid_loss_list = []
+        best_loss = 0
+
+        for epoch in range(params.num_epochs):
+            start = time.time()
+            train_loss.reset_states()
+
+            accuracy_list = []
+            for batch, data in enumerate(train_data):
+                inp = data[0]
+                tar = data[1]
+                predictions = self.train_step(inp, tar)
+
+                first_padding_positions = tf.argmax(
+                    tf.cast(tf.equal(tf.cast(tf.zeros(tar.shape), dtype=tf.float32), tf.cast(tar, dtype=tf.float32)),
+                            tf.float32), axis=1)
+                preds = tf.argmax(predictions, axis=-1)
+
+                padding_mask = tf.sequence_mask(lengths=first_padding_positions, maxlen=ANSWER_MAX_LENGTH,
+                                                dtype=tf.int64)
+                preds_to_compare = preds * padding_mask
+                targets_to_compare = tar[:, 1:] * padding_mask
+
+                # Compare row-by-row for exact match between preds / true target sequences
+                correct_pred_mask = tf.reduce_all(tf.equal(preds_to_compare, targets_to_compare), axis=1)
+                accuracy = tf.reduce_sum(tf.cast(correct_pred_mask, dtype=tf.int32)) / tf.shape(correct_pred_mask)[0]
+                accuracy_list.append(accuracy)
+
+                if batch % 50 == 0:
+                    print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
+                        epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
+
+            if (epoch + 1) % 5 == 0:
+                valid_loss, valid_acc = get_validation_metrics(valid_data, self)
+                valid_loss_list.append(valid_loss)
+                if valid_loss < best_loss:
+                    best_loss = valid_loss
+                    logger.info(f'Saving on batch {batch}')
+                    logger.info(f'New best validation loss: {best_loss}')
+                    ckpt_save_path = ckpt_manager.save()
+                    print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
+                                                                        ckpt_save_path))
+
+            print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
+                                                                train_loss.result(),
+                                                                np.mean(accuracy_list[-50:])))
+
+            print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
+
+            if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
+                break
 
 
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -331,17 +431,6 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
         return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
-
-def loss_function(real, pred):
-    mask = tf.math.logical_not(tf.math.equal(real, 0))
-    loss_ = loss_object(real, pred)
-
-    mask = tf.cast(mask, dtype=loss_.dtype)
-    loss_ *= mask
-
-    return tf.reduce_mean(loss_)
-
-
 def create_masks(inp, tar):
     # Encoder padding mask
     enc_padding_mask = create_padding_mask(inp)
@@ -358,33 +447,6 @@ def create_masks(inp, tar):
     combined_mask = tf.maximum(dec_target_padding_mask, look_ahead_mask)
 
     return enc_padding_mask, combined_mask, dec_padding_mask
-
-train_step_signature = [
-        tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-        tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-    ]
-@tf.function(input_signature=train_step_signature)
-def train_step(inp, tar):
-    tar_inp = tar[:, :-1]
-    tar_real = tar[:, 1:]
-
-    enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
-
-    with tf.GradientTape() as tape:
-        predictions, _ = model(inp, tar_inp,
-                                     True,
-                                     enc_padding_mask,
-                                     combined_mask,
-                                     dec_padding_mask)
-        loss = loss_function(tar_real, predictions)
-
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-
-    train_loss(loss)
-    #train_accuracy(tar_real, predictions)
-    return predictions
-
 
 def evaluate(inp_sentence):
     start_token = [tokenizer_pt.vocab_size]
@@ -441,82 +503,82 @@ def translate(sentence, plot=''):
 
 
 if __name__ == '__main__':
-    learning_rate = CustomSchedule(d_model)
-    optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98,
-                                         epsilon=1e-9)
+    # learning_rate = CustomSchedule(d_model)
+    # optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98,
+    #                                      epsilon=1e-9)
+    #
+    # loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
+    #
+    # train_loss = tf.keras.metrics.Mean(name='train_loss')
+    #
+    # model = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
+    #                           pe_input=QUESTION_MAX_LENGTH,#input_vocab_size,
+    #                           pe_target=ANSWER_MAX_LENGTH,#target_vocab_size,
+    #                           rate=dropout_rate)
+    #
+    # checkpoint_path = "./checkpoints/train"
+    #
+    # ckpt = tf.train.Checkpoint(transformer=model,
+    #                            optimizer=optimizer)
+    #
+    # ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
+    #
+    # # if a checkpoint exists, restore the latest checkpoint.
+    # if ckpt_manager.latest_checkpoint:
+    #     ckpt.restore(ckpt_manager.latest_checkpoint)
+    #     print('Latest checkpoint restored!!')
+    #
+    # valid_loss_list = []
+    # best_loss = 0
+    #
+    # for epoch in range(EPOCHS):
+    #     start = time.time()
+    #     train_loss.reset_states()
+    #
+    #     accuracy_list = []
+    #     for batch, data in enumerate(train_data):
+    #         inp = data[0]
+    #         tar = data[1]
+    #         predictions = train_step(inp, tar)
+    #
+    #         first_padding_positions = tf.argmax(tf.cast(tf.equal(tf.cast(tf.zeros(tar.shape), dtype=tf.float32), tf.cast(tar, dtype=tf.float32)), tf.float32), axis=1)
+    #         preds = tf.argmax(predictions, axis=-1)
+    #
+    #         padding_mask = tf.sequence_mask(lengths=first_padding_positions, maxlen=ANSWER_MAX_LENGTH, dtype=tf.int64)
+    #         preds_to_compare = preds * padding_mask
+    #         targets_to_compare = tar[:, 1:] * padding_mask
+    #
+    #         # Compare row-by-row for exact match between preds / true target sequences
+    #         correct_pred_mask = tf.reduce_all(tf.equal(preds_to_compare, targets_to_compare), axis=1)
+    #         accuracy = tf.reduce_sum(tf.cast(correct_pred_mask, dtype=tf.int32))/tf.shape(correct_pred_mask)[0]
+    #         accuracy_list.append(accuracy)
+    #
+    #         if batch % 50 == 0:
+    #             print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
+    #                 epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
+    #
+    #     if (epoch + 1) % 5 == 0:
+    #         valid_loss, valid_acc = get_validation_metrics(valid_data, model)
+    #         valid_loss_list.append(valid_loss)
+    #         if valid_loss < best_loss:
+    #             best_loss = valid_loss
+    #             logger.info(f'Saving on batch {batch}')
+    #             logger.info(f'New best validation loss: {best_loss}')
+    #             ckpt_save_path = ckpt_manager.save()
+    #             print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
+    #                                                             ckpt_save_path))
+    #
+    #     print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
+    #                                                         train_loss.result(),
+    #                                                         np.mean(accuracy_list[-50:])))
+    #
+    #     print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
+    #
+    #     if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
+    #         break
+    #
 
-    loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
-
-    train_loss = tf.keras.metrics.Mean(name='train_loss')
-
-    model = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
-                              pe_input=QUESTION_MAX_LENGTH,#input_vocab_size,
-                              pe_target=ANSWER_MAX_LENGTH,#target_vocab_size,
-                              rate=dropout_rate)
-
-    checkpoint_path = "./checkpoints/train"
-
-    ckpt = tf.train.Checkpoint(transformer=model,
-                               optimizer=optimizer)
-
-    ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
-
-    # if a checkpoint exists, restore the latest checkpoint.
-    if ckpt_manager.latest_checkpoint:
-        ckpt.restore(ckpt_manager.latest_checkpoint)
-        print('Latest checkpoint restored!!')
-
-    valid_loss_list = []
-    best_loss = 0
-
-    for epoch in range(EPOCHS):
-        start = time.time()
-        train_loss.reset_states()
-
-        accuracy_list = []
-        for batch, data in enumerate(train_data):
-            inp = data[0]
-            tar = data[1]
-            predictions = train_step(inp, tar)
-
-            first_padding_positions = tf.argmax(tf.cast(tf.equal(tf.cast(tf.zeros(tar.shape), dtype=tf.float32), tf.cast(tar, dtype=tf.float32)), tf.float32), axis=1)
-            preds = tf.argmax(predictions, axis=-1)
-
-            padding_mask = tf.sequence_mask(lengths=first_padding_positions, maxlen=ANSWER_MAX_LENGTH, dtype=tf.int64)
-            preds_to_compare = preds * padding_mask
-            targets_to_compare = tar[:, 1:] * padding_mask
-
-            # Compare row-by-row for exact match between preds / true target sequences
-            correct_pred_mask = tf.reduce_all(tf.equal(preds_to_compare, targets_to_compare), axis=1)
-            accuracy = tf.reduce_sum(tf.cast(correct_pred_mask, dtype=tf.int32))/tf.shape(correct_pred_mask)[0]
-            accuracy_list.append(accuracy)
-
-            if batch % 50 == 0:
-                print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
-                    epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
-
-        if (epoch + 1) % 5 == 0:
-            valid_loss, valid_acc = get_validation_metrics(valid_data, model)
-            valid_loss_list.append(valid_loss)
-            if valid_loss < best_loss:
-                best_loss = valid_loss
-                logger.info(f'Saving on batch {batch}')
-                logger.info(f'New best validation loss: {best_loss}')
-                ckpt_save_path = ckpt_manager.save()
-                print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
-                                                                ckpt_save_path))
-
-        print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
-                                                            train_loss.result(),
-                                                            np.mean(accuracy_list[-50:])))
-
-        print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
-
-        if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
-            break
-
-
-
+    print("empty main!!")
 
 
 '''
