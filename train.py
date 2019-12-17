@@ -19,19 +19,19 @@ parser.add_argument('--train_data', metavar='train_data', type=str, default="_al
 args = parser.parse_args()
 
 tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
 # TODO ADD SLACKBOT, get Ray's code
+# TODO cache the params dictionary for each run as well
 
 # Load pre-padded data
 questions_encoded = np.array(np.load(f'cache/questions_encoded_padded_{args.train_data}.npy'))
 answers_encoded = np.array(np.load(f'cache/answers_encoded_padded_{args.train_data}.npy'))
 
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
-            .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 NUM_TRAINING_BATCHES = int(NUM_EXAMPLES/BATCH_SIZE*(1-p_test))
 train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(NUM_EPOCHS)
 valid_data = input_data.skip(NUM_TRAINING_BATCHES)
