@@ -8,6 +8,7 @@ from config import *
 from utils import get_logger
 import time
 from constants import QUESTION_MAX_LENGTH
+from lstm import inference_step, inference, get_validation_metrics, get_accuracy
 
 tb_logdir = os.path.join(EXPERIMENT_DIR, 'tensorboard')
 logger = get_logger('validation_log')
@@ -35,6 +36,7 @@ input_vocab_size = VOCAB_SIZE #tokenizer_pt.vocab_size + 2
 target_vocab_size = VOCAB_SIZE #tokenizer_en.vocab_size + 2
 dropout_rate = 0.1
 EPOCHS = 1
+BATCH_SIZE = 128
 #NUM_EXAMPLES = 10
 
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
@@ -383,15 +385,15 @@ def train_step(inp, tar):
     enc_padding_mask, combined_mask, dec_padding_mask = create_masks(inp, tar_inp)
 
     with tf.GradientTape() as tape:
-        predictions, _ = transformer(inp, tar_inp,
+        predictions, _ = model(inp, tar_inp,
                                      True,
                                      enc_padding_mask,
                                      combined_mask,
                                      dec_padding_mask)
         loss = loss_function(tar_real, predictions)
 
-    gradients = tape.gradient(loss, transformer.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, transformer.trainable_variables))
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
     train_loss(loss)
     #train_accuracy(tar_real, predictions)
@@ -451,68 +453,24 @@ def translate(sentence, plot=''):
         plot_attention_weights(attention_weights, sentence, result, plot)
 '''
 
+
 if __name__ == '__main__':
-
-    # temp_mha = MultiHeadAttention(d_model=512, num_heads=8)
-    # y = tf.random.uniform((1, 60, 512))  # (batch_size, encoder_sequence, d_model)
-    # out, attn = temp_mha(y, k=y, q=y, mask=None)
-    #
-    # sample_ffn = point_wise_feed_forward_network(512, 2048)
-    # sample_encoder_layer = EncoderLayer(512, 8, 2048)
-    # sample_encoder_layer_output = sample_encoder_layer(tf.random.uniform((64, 43, 512)), False, None)
-    # sample_decoder_layer = DecoderLayer(512, 8, 2048)
-    # sample_decoder_layer_output, _, _ = sample_decoder_layer(tf.random.uniform((64, 50, 512)), sample_encoder_layer_output,
-    #                                                          False, None, None)
-    # sample_encoder = Encoder(num_layers=2, d_model=512, num_heads=8,
-    #                          dff=2048, input_vocab_size=8500,
-    #                          maximum_position_encoding=10000)
-    # temp_input = tf.random.uniform((64, 62), dtype=tf.int64, minval=0, maxval=200)
-    # sample_encoder_output = sample_encoder(temp_input, training=False, mask=None)
-    # sample_decoder = Decoder(num_layers=2, d_model=512, num_heads=8,
-    #                          dff=2048, target_vocab_size=8000,
-    #                          maximum_position_encoding=5000)
-    # temp_input = tf.random.uniform((64, 26), dtype=tf.int64, minval=0, maxval=200)
-    #
-    # output, attn = sample_decoder(temp_input,
-    #                               enc_output=sample_encoder_output,
-    #                               training=False,
-    #                               look_ahead_mask=None,
-    #                               padding_mask=None)
-
-    # sample_transformer = Transformer(
-    #     num_layers=2, d_model=512, num_heads=8, dff=2048,
-    #     input_vocab_size=8500, target_vocab_size=8000,
-    #     pe_input=10000, pe_target=6000)
-
-    # temp_input = tf.random.uniform((64, 38), dtype=tf.int64, minval=0, maxval=200)
-    # temp_target = tf.random.uniform((64, 36), dtype=tf.int64, minval=0, maxval=200)
-    #
-    # fn_out, _ = sample_transformer(temp_input, temp_target, training=False,
-    #                                enc_padding_mask=None,
-    #                                look_ahead_mask=None,
-    #                                dec_padding_mask=None)
-
     learning_rate = CustomSchedule(d_model)
     optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98,
                                          epsilon=1e-9)
-
-    # temp_learning_rate_schedule = CustomSchedule(d_model)
 
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 
     train_loss = tf.keras.metrics.Mean(name='train_loss')
 
-    # This is character-level accuracy, which is great but not what we want
-    #train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
-
-    transformer = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
+    model = Transformer(num_layers, d_model, num_heads, dff, input_vocab_size, target_vocab_size,
                               pe_input=QUESTION_MAX_LENGTH,#input_vocab_size,
                               pe_target=ANSWER_MAX_LENGTH,#target_vocab_size,
                               rate=dropout_rate)
 
     checkpoint_path = "./checkpoints/train"
 
-    ckpt = tf.train.Checkpoint(transformer=transformer,
+    ckpt = tf.train.Checkpoint(transformer=model,
                                optimizer=optimizer)
 
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
@@ -522,27 +480,19 @@ if __name__ == '__main__':
         ckpt.restore(ckpt_manager.latest_checkpoint)
         print('Latest checkpoint restored!!')
 
-    # The @tf.function trace-compiles train_step into a TF graph for faster
-    # execution. The function specializes to the precise shape of the argument
-    # tensors. To avoid re-tracing due to the variable sequence lengths or variable
-    # batch sizes (the last batch is smaller), use input_signature to specify
-    # more generic shapes.
+    valid_loss_list = []
+    best_loss = 0
 
     for epoch in range(EPOCHS):
         start = time.time()
-
         train_loss.reset_states()
-        #train_accuracy.reset_states()
 
-        # inp -> portuguese, tar -> english
-        # for (batch, (inp, tar)) in enumerate(train_dataset):
         accuracy_list = []
         for batch, data in enumerate(train_data):
             inp = data[0]
             tar = data[1]
             predictions = train_step(inp, tar)
 
-            # TODO here calculate accuracy per batch
             first_padding_positions = tf.argmax(tf.cast(tf.equal(tf.cast(tf.zeros(tar.shape), dtype=tf.float32), tf.cast(tar, dtype=tf.float32)), tf.float32), axis=1)
             preds = tf.argmax(predictions, axis=-1)
 
@@ -550,7 +500,7 @@ if __name__ == '__main__':
             preds_to_compare = preds * padding_mask
             targets_to_compare = tar[:, 1:] * padding_mask
 
-            # TODO COMPARE ROWS of preds vs. targets -- with tf.where?
+            # Compare row-by-row for exact match between preds / true target sequences
             correct_pred_mask = tf.reduce_all(tf.equal(preds_to_compare, targets_to_compare), axis=1)
             accuracy = tf.reduce_sum(tf.cast(correct_pred_mask, dtype=tf.int32))/tf.shape(correct_pred_mask)[0]
             accuracy_list.append(accuracy)
@@ -560,17 +510,24 @@ if __name__ == '__main__':
                     epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
 
         if (epoch + 1) % 5 == 0:
-            ckpt_save_path = ckpt_manager.save()
-            print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
+            valid_loss, valid_acc = get_validation_metrics(valid_data, model)
+            valid_loss_list.append(valid_loss)
+            if valid_loss < best_loss:
+                best_loss = valid_loss
+                logger.info(f'Saving on batch {batch}')
+                logger.info(f'New best validation loss: {best_loss}')
+                ckpt_save_path = ckpt_manager.save()
+                print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
                                                                 ckpt_save_path))
 
         print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
                                                             train_loss.result(),
-                                                            train_accuracy.result()))
+                                                            np.mean(accuracy_list[-50:])))
 
         print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
 
-
+        if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
+            break
 
 
 

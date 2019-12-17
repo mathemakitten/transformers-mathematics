@@ -15,11 +15,11 @@ print(EXPERIMENT_DIR)
 
 class TransformerParams:
     def __init__(self):
-        self.TM_learning_rate = 1e-4
+        self.learning_rate = 1e-4
         self.batch_size = 32
-        self.vocab_size = 8185
+        self.vocab_size = VOCAB_SIZE
         self.num_heads = 4
-        self.max_context = 1024
+        self.max_context = 512
         self.embedding_dim = 512
         self.ffn_expansion = 4
         self.is_training = True
