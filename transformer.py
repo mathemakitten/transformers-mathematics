@@ -102,7 +102,6 @@ def scaled_dot_product_attention(q, k, v, mask):
 
     return output, attention_weights
 
-
 class MultiHeadAttention(tf.keras.layers.Layer):
     def __init__(self, d_model, num_heads):
         super(MultiHeadAttention, self).__init__()
@@ -394,25 +393,27 @@ class Transformer(tf.keras.Model):
                     print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
                         epoch + 1, batch, self.train_loss.result(), np.mean(accuracy_list[-50:])))
 
-            if (epoch + 1) % 5 == 0:
-                valid_loss, valid_acc = get_validation_metrics(valid_data, self)
-                valid_loss_list.append(valid_loss)
-                if valid_loss < best_loss:
-                    best_loss = valid_loss
-                    logger.info(f'Saving on batch {batch}')
-                    logger.info(f'New best validation loss: {best_loss}')
-                    ckpt_save_path = ckpt_manager.save()
-                    print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
-                                                                        ckpt_save_path))
-
-            print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
-                                                                self.train_loss.result(),
-                                                                np.mean(accuracy_list[-50:])))
-
-            print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
-
-            if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
-                break
+            # todo
+            # if (epoch + 1) % 5 == 0:
+            #     valid_loss, valid_acc = get_validation_metrics(valid_data, self)
+            #     valid_loss_list.append(valid_loss)
+            #     if valid_loss < best_loss:
+            #         best_loss = valid_loss
+            #         logger.info(f'Saving on batch {batch}')
+            #         logger.info(f'New best validation loss: {best_loss}')
+            #         ckpt_save_path = ckpt_manager.save()
+            #         print('Saving checkpoint for epoch {} at {}'.format(epoch + 1,
+            #                                                             ckpt_save_path))
+            #
+            # print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
+            #                                                     self.train_loss.result(),
+            #                                                     np.mean(accuracy_list[-50:])))
+            #
+            # print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
+            #
+            #
+            # if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
+            #     break
 
 
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
