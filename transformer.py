@@ -10,7 +10,6 @@ import time
 from constants import QUESTION_MAX_LENGTH
 from lstm import inference_step, inference, get_validation_metrics, get_accuracy
 
-tb_logdir = os.path.join(EXPERIMENT_DIR, 'tensorboard')
 logger = get_logger('validation_log')
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
@@ -25,26 +24,13 @@ dataset_id = '_all_data_ever'
 questions_encoded = np.array(np.load('cache/questions_encoded_padded_{}.npy'.format(dataset_id)))
 answers_encoded = np.array(np.load('cache/answers_encoded_padded_{}.npy'.format(dataset_id)))
 
-
 params = TransformerParams()
-# TODO add these to the params class
-num_layers = 2
-d_model = 512
-dff = 512
-num_heads = 4
-input_vocab_size = VOCAB_SIZE #tokenizer_pt.vocab_size + 2
-target_vocab_size = VOCAB_SIZE #tokenizer_en.vocab_size + 2
-dropout_rate = 0.1
-EPOCHS = 1
-BATCH_SIZE = 128
-#NUM_EXAMPLES = 10
 
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
+input_data = dataset.take(params.num_examples).shuffle(questions_encoded.shape[0]).batch(params.batch_size) \
             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-NUM_TRAINING_BATCHES = int(NUM_EXAMPLES/BATCH_SIZE*(1-p_test))
-train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(EPOCHS)
-valid_data = input_data.skip(NUM_TRAINING_BATCHES)
+train_data = input_data.take(params.num_training_batches).repeat(params.num_epochs)
+valid_data = input_data.skip(params.num_training_batches)
 
 
 def get_angles(pos, i, d_model):
