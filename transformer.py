@@ -353,7 +353,6 @@ class Transformer(tf.keras.Model):
 
     def train(self, params, train_data, valid_data, logger):
         self.loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
-        train_loss = tf.keras.metrics.Mean(name='train_loss')
 
         checkpoint_path = params.checkpoint_dir
         ckpt = tf.train.Checkpoint(transformer=self, optimizer=self.optimizer)
@@ -368,7 +367,7 @@ class Transformer(tf.keras.Model):
 
         for epoch in range(params.num_epochs):
             start = time.time()
-            train_loss.reset_states()
+            self.train_loss.reset_states()
 
             accuracy_list = []
             for batch, data in enumerate(train_data):
@@ -393,7 +392,7 @@ class Transformer(tf.keras.Model):
 
                 if batch % 50 == 0:
                     print('Epoch {} Batch {} Loss {:.4f} Accuracy {:.4f}'.format(
-                        epoch + 1, batch, train_loss.result(), np.mean(accuracy_list[-50:])))
+                        epoch + 1, batch, self.train_loss.result(), np.mean(accuracy_list[-50:])))
 
             if (epoch + 1) % 5 == 0:
                 valid_loss, valid_acc = get_validation_metrics(valid_data, self)
@@ -407,7 +406,7 @@ class Transformer(tf.keras.Model):
                                                                         ckpt_save_path))
 
             print('Epoch {} Loss {:.4f} Accuracy {:.4f}'.format(epoch + 1,
-                                                                train_loss.result(),
+                                                                self.train_loss.result(),
                                                                 np.mean(accuracy_list[-50:])))
 
             print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
