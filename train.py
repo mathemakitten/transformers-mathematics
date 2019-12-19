@@ -27,7 +27,7 @@ questions_encoded = np.array(np.load('cache/questions_encoded_padded_{}.npy'.for
 answers_encoded = np.array(np.load('cache/answers_encoded_padded_{}.npy'.format(dataset_id)))
 
 
-if __name__ == '__main__':  # TODO HN move these function definitions out of main... hahahahaha yikes
+if __name__ == '__main__':
     np.random.seed(1234)
     tf.random.set_seed(1234)
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':  # TODO HN move these function definitions out of mai
 
     params = TransformerParams()
 
-    logger = get_logger('validation_log', params.experiment_dir)
+    logger = get_logger('validation', params.experiment_dir)
     logger.info("Logging to {}".format(params.experiment_dir))
 
     # preprocess data
@@ -48,3 +48,18 @@ if __name__ == '__main__':  # TODO HN move these function definitions out of mai
     model = Transformer(params)
     model.train(params, train_data, valid_data, logger)
     # model.inference()
+
+
+'''
+HN NOTE: 
+For generalizability of training pipeline, 
+Train steps should be methods of the model 
+and individual train steps should output masked preds + targets 
+But the training loop should be general 
+Training loop should be similar to lstm.py current one, contain 
+- Tensorboard logging 
+- Validation loss + accuracy if i % n 
+- Early stopping check 
+- Outputting samples 
+- Model checkpointing 
+'''

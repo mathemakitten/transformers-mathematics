@@ -11,18 +11,19 @@ from config import *
 from utils import get_logger
 import time
 
-tb_logdir = os.path.join(EXPERIMENT_DIR, 'tensorboard')
-logger = get_logger('validation_log')
+params = LSTMParams()
+
+tb_logdir = os.path.join(params.experiment_dir, 'tensorboard')
+logger = get_logger('validation_log', params.experiment_dir)
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--eager', metavar='eager_mode', type=bool, default=True, help='Eager mode on, else Autograph')
 parser.add_argument('--gpu_id', metavar='gpu_id', type=str, default="1", help='The selected GPU to use, default 1')
 args = parser.parse_args()
 
 tf.config.experimental_run_functions_eagerly(args.eager)
-os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "3"
 
 # TODO ADD SLACKBOT, get Ray's code
-# TODO: Take functions out of main
 
 # load pre-padded data
 # questions_encoded = np.array(np.load('cache/questions_encoded_padded.npy'))
@@ -33,11 +34,10 @@ questions_encoded = np.array(np.load('cache/questions_encoded_padded__all_data_e
 answers_encoded = np.array(np.load('cache/answers_encoded_padded__all_data_ever.npy'))
 
 dataset = tf.data.Dataset.from_tensor_slices((questions_encoded, answers_encoded))
-input_data = dataset.take(NUM_EXAMPLES).shuffle(questions_encoded.shape[0]).batch(BATCH_SIZE) \
+input_data = dataset.take(params.num_examples).shuffle(questions_encoded.shape[0]).batch(params.batch_size) \
             .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-NUM_TRAINING_BATCHES = int(NUM_EXAMPLES/BATCH_SIZE*(1-p_test))
-train_data = input_data.take(NUM_TRAINING_BATCHES).repeat(NUM_EPOCHS)
-valid_data = input_data.skip(NUM_TRAINING_BATCHES)
+train_data = input_data.take(params.num_training_batches).repeat(params.num_epochs)
+valid_data = input_data.skip(params.num_training_batches)
 
 # #  load data
 # questions_encoded = np.array(np.load('cache/questions_encoded.npy', allow_pickle=True))
@@ -183,12 +183,13 @@ def get_validation_metrics(validation_data, model):
     logger.info(f'Validation accuracy: {mean_acc}')
     return mean_loss, mean_acc
 
+
 def train(training_data, model):
     valid_loss_list = []  # for early stopping
     best_loss = np.inf  # for model check-pointing
 
     # Setup training tracking capabilities
-    progress_bar = tf.keras.utils.Progbar(int(NUM_TRAINING_BATCHES * NUM_EPOCHS), verbose=1)
+    progress_bar = tf.keras.utils.Progbar(int(params.num_training_batches * params.num_epochs), verbose=1)
     writer = tf.summary.create_file_writer(tb_logdir)
 
     for i, data in enumerate(training_data):
@@ -233,15 +234,17 @@ def train(training_data, model):
                 best_loss = valid_loss
                 logger.info(f'Saving on batch {i}')
                 logger.info(f'New best validation loss: {best_loss}')
-                model.save_weights(os.path.join(EXPERIMENT_DIR, 'model_weights'), save_format='tf')
+                model.save_weights(os.path.join(params.experiment_dir, 'model_weights'), save_format='tf')
             # early stopping
             print(valid_loss_list)
             if all([valid_loss < best_loss for valid_loss in valid_loss_list[-5:]]):
                 return
 
+
 def output_to_tensor(tokens):
     tensor_tokens = tf.squeeze(tf.convert_to_tensor(tokens), axis=2)
     return tf.transpose(tensor_tokens)
+
 
 def token_to_text(batch_tensor):
     batch_array = batch_tensor.numpy()
@@ -251,9 +254,11 @@ def token_to_text(batch_tensor):
         text_outputs.append(text)
     return text_outputs
 
+
 def inference_step(inputs, model):
     outputs, output_tokens = model(inputs)
     return outputs, output_tokens
+
 
 def inference(inference_data, model):
     accuracy_list = []
@@ -283,11 +288,14 @@ if __name__ == '__main__':  # TODO HN move these function definitions out of mai
     np.random.seed(1234)
     tf.random.set_seed(1234)
 
-    model = EncoderDecoder(input_dim=VOCAB_SIZE, embedding_dim=EMBEDDING_SIZE, hidden_dim=LSTM_HIDDEN_SIZE, output_dim=VOCAB_SIZE, max_len=ANSWER_MAX_LENGTH)
+    model = EncoderDecoder(input_dim=params.vocab_size, embedding_dim=params.embedding_size,
+                           hidden_dim=params.lstm_hidden_size,
+                           output_dim=params.vocab_size,
+                           max_len=params.answer_max_length)
     optimizer = tf.keras.optimizers.Adam(lr=0.001)
     tf.keras.utils.Progbar
 
-    logger.info("Logging to {}".format(EXPERIMENT_DIR))
+    logger.info("Logging to {}".format(params.experiment_dir))
 
     train(train_data, model)
     #model.load_weights('experiment_results/2019_12_12_00:38-easy-arithmetic__add_or_sub-fullrun_batch512_lstm1024_15epochs/model_weights')

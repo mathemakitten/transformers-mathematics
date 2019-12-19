@@ -153,7 +153,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         return output, attention_weights
 
 
-
 def point_wise_feed_forward_network(d_model, dff):
   return tf.keras.Sequential([
       tf.keras.layers.Dense(dff, activation='relu'),  # (batch_size, seq_len, dff)
@@ -293,9 +292,7 @@ class Transformer(tf.keras.Model):
     def __init__(self, params):
         super(Transformer, self).__init__()
 
-        self.learning_rate = CustomSchedule(params.d_model)
-        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
-        self.train_loss = tf.keras.metrics.Mean(name='train_loss')
+        # Model config
         num_layers = params.num_layers
         d_model = params.d_model
         num_heads = params.num_heads
@@ -306,6 +303,12 @@ class Transformer(tf.keras.Model):
         pe_target = params.answer_max_length
         attention_dropout = params.attention_dropout
 
+        # Training loop config
+        self.learning_rate = CustomSchedule(params.d_model)
+        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+        self.train_loss = tf.keras.metrics.Mean(name='train_loss')
+
+        # Instantiate the model
         self.encoder = Encoder(num_layers, d_model, num_heads, dff, input_vocab_size, pe_input, attention_dropout)
         self.decoder = Decoder(num_layers, d_model, num_heads, dff, target_vocab_size, pe_target, attention_dropout)
         self.final_layer = tf.keras.layers.Dense(target_vocab_size)
