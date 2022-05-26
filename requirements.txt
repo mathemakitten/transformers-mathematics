@@ -3,4 +3,4 @@ mathematics_dataset
 numpy==1.17.3
 pandas==0.25.2
 six==1.12.0
-tensorflow-gpu==2.0.0
+tensorflow-gpu==2.7.2
